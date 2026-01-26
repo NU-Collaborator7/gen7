@@ -1,0 +1,7 @@
+{
+  "name": "Copy of 虎おっさんV3（リアル音声版）",
+  "description": "熱狂的な阪神タイガースファン「虎おっさん」と尼崎弁で語り合えるチャットアプリ。最新のGemini APIによるリアルな音声回答にも対応しています。",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}

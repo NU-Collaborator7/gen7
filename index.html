@@ -1,0 +1,40 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>虎おっさん（リアル音声版）</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&family=Kosugi+Maru&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans JP', 'Kosugi Maru', sans-serif;
+            background: radial-gradient(circle at 10% 10%, rgba(0,0,0,0.06), transparent 20%), #f6f0e6;
+        }
+        .tiger-stripe {
+            background-image: repeating-linear-gradient( -25deg, rgba(0,0,0,0.85) 0 18px, #f6c100 18px 36px );
+        }
+        .message-in {
+            animation: fadeIn 0.2s ease-out forwards;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+<script type="importmap">
+{
+  "imports": {
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react": "https://esm.sh/react@^19.2.3",
+    "@google/genai": "https://esm.sh/@google/genai@^1.38.0",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/"
+  }
+}
+</script>
+</head>
+<body class="min-h-screen flex items-center justify-center p-2 sm:p-4">
+    <div id="root" class="w-full max-w-3xl h-[90vh]"></div>
+</body>
+</html>
