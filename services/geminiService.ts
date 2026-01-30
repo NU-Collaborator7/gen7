@@ -3,9 +3,6 @@ import { GoogleGenAI, Modality } from "@google/genai";
 import { Message, Role } from "../types";
 import { TORA_OSSAN_PROFILE } from "../constants";
 
-const apiKey = process.env.API_KEY || '';
-const ai = new GoogleGenAI({ apiKey });
-
 /**
  * 現在の日時情報を取得してシステムプロンプトを構築する
  */
@@ -16,12 +13,13 @@ const getDynamicSystemInstruction = () => {
 現在の日本時間: ${jstDate}
 ${TORA_OSSAN_PROFILE}
 上記の現在日時を考慮して会話してください。
-【重要指示】回答は極限まで短く、一言で返してください。長文は絶対に禁止です。尼崎のおっさんらしく、短く、一瞬で熱を伝えろ。
+【重要指示】回答は3行程度（100文字〜150文字程度）にしてください。尼崎のおっさんらしく、短くも熱い返答をすること。
 `;
 };
 
-// 1. 低遅延テキストストリーミング (gemini-3-flash)
+// 1. テキスト生成
 export async function* chatStream(messages: Message[]) {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
   const response = await ai.models.generateContentStream({
     model: 'gemini-3-flash-preview',
     contents: messages.map(m => ({
@@ -41,19 +39,15 @@ export async function* chatStream(messages: Message[]) {
   }
 }
 
-// 2. 爆速TTS (gemini-2.5-flash-tts)
+// 2. TTS
 export async function generateToraVoice(text: string) {
-  // 記号や絵文字をフィルタリング
-  let cleanText = text
-    .replace(/[*#]/g, '')
-    .replace(/[🐯⚾️🔥]/g, '');
-
-  // 岩崎は「イワザキ」と読ませる
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+  let cleanText = text.replace(/[*#]/g, '').replace(/[🐯⚾️🔥]/g, '');
   cleanText = cleanText.replace(/岩崎/g, 'イワザキ');
 
   const response = await ai.models.generateContent({
     model: "gemini-2.5-flash-preview-tts",
-    contents: [{ parts: [{ text: `尼崎弁の虎ファンとして感情豊かに読み上げろ: ${cleanText}` }] }],
+    contents: [{ parts: [{ text: `尼崎弁の虎ファンとして熱く読み上げろ: ${cleanText}` }] }],
     config: {
       responseModalities: [Modality.AUDIO],
       speechConfig: {
@@ -67,24 +61,27 @@ export async function generateToraVoice(text: string) {
   return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
 }
 
-// 3. ライブAPI (gemini-2.5-flash-native-audio)
-export const connectLive = (callbacks: any) => {
-  return ai.live.connect({
-    model: 'gemini-2.5-flash-native-audio-preview-12-2025',
-    callbacks,
+// 3. 画像生成 (gemini-2.5-flash-image)
+export async function generateImage(prompt: string) {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+  const response = await ai.models.generateContent({
+    model: 'gemini-2.5-flash-image',
+    contents: {
+      parts: [{ text: `阪神タイガースファンの虎おっさんが喜ぶような、${prompt} のイラストを描いて。` }],
+    },
     config: {
-      responseModalities: [Modality.AUDIO],
-      speechConfig: {
-        voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Charon' } },
-      },
-      systemInstruction: getDynamicSystemInstruction(),
-      inputAudioTranscription: {},
-      outputAudioTranscription: {},
+      imageConfig: { aspectRatio: "1:1" }
     },
   });
-};
 
-// Base64 & Audio Utils
+  for (const part of response.candidates[0].content.parts) {
+    if (part.inlineData) {
+      return `data:image/png;base64,${part.inlineData.data}`;
+    }
+  }
+  return null;
+}
+
 export function encode(bytes: Uint8Array) {
   let binary = '';
   const len = bytes.byteLength;
