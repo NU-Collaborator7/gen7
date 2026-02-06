@@ -90,7 +90,6 @@ const App: React.FC = () => {
   const toggleRecording = () => {
     if (isRecording) {
       recognitionRef.current?.stop();
-      // 音声入力を停止した後に少し待って送信
       setTimeout(() => handleSend(), 500);
     } else {
       setInputValue('');
@@ -110,21 +109,42 @@ const App: React.FC = () => {
 
     try {
       const lowerText = text.toLowerCase();
-      // 画像生成の判定
-      if (lowerText.includes('画像') || lowerText.includes('描いて') || lowerText.includes('画像生成')) {
+      
+      // 画像生成判定
+      const imageKeywords = ['画像', '描いて', '生成', 'イラスト', 'イメージ', '写真', '見せて', '絵', 'draw', 'image', 'picture'];
+      const isImageRequest = imageKeywords.some(k => lowerText.includes(k));
+
+      // 歌唱判定
+      const singKeywords = ['歌って', '歌え', 'ソング', '六甲おろし', '歌唱', 'sing', 'song', '熱唱'];
+      const isSingRequest = singKeywords.some(k => lowerText.includes(k));
+
+      if (isImageRequest) {
         const imageUrl = await geminiService.generateImage(text);
         if (imageUrl) {
+          const content = "よっしゃ、虎おっさん特製の画像作ったデ！どや、ええ感じやろ？";
+          const audioData = isAutoPlay ? await geminiService.generateToraVoice(content) : undefined;
+          
           setMessages(prev => [...prev, { 
             role: Role.ASSISTANT, 
-            content: "よっしゃ、虎おっさん特製の画像作ったデ！どや、ええ感じやろ？",
-            imageUrl 
+            content,
+            imageUrl,
+            audioData
           }]);
+          
+          if (audioData) playBase64Audio(audioData);
+          setIsLoading(false);
+          return;
+        } else {
+          const failContent = "悪いな、今はちょっと手が離せんくて絵が描けんわ。代わりに普通のチャットで勘弁してや！";
+          setMessages(prev => [...prev, { role: Role.ASSISTANT, content: failContent }]);
+          const failAudio = await geminiService.generateToraVoice(failContent);
+          if (failAudio) playBase64Audio(failAudio);
           setIsLoading(false);
           return;
         }
       }
 
-      // 通常のチャット（3行程度の回答）
+      // 通常/歌唱チャット
       let fullResponse = '';
       const stream = geminiService.chatStream([...messages, userMsg]);
       for await (const chunk of stream) {
@@ -134,13 +154,15 @@ const App: React.FC = () => {
 
       let audioData = undefined;
       try {
-        audioData = await geminiService.generateToraVoice(fullResponse);
+        // 歌唱リクエストの場合はTTSも歌唱モードにする
+        audioData = await geminiService.generateToraVoice(fullResponse, isSingRequest);
       } catch (e) { console.error(e); }
 
       setMessages(prev => [...prev, { 
         role: Role.ASSISTANT, 
         content: fullResponse,
-        audioData: audioData 
+        audioData: audioData,
+        isSinging: isSingRequest // 歌唱中フラグ
       }]);
       setStreamingText('');
 
@@ -157,8 +179,8 @@ const App: React.FC = () => {
   if (!isProfileLoaded) {
     return (
       <div className="fixed inset-0 bg-[#f6f0e6] flex flex-col items-center justify-center z-50">
-        <div className="text-7xl mb-6 animate-bounce">🐯</div>
-        <h1 className="text-2xl font-black text-gray-800 italic">準備中や、待っとけ！</h1>
+        <div className="text-7xl mb-6 animate-bounce text-shadow-xl">🐯</div>
+        <h1 className="text-2xl font-black text-gray-800 italic tracking-widest">喉の調子を整えとるわ！</h1>
       </div>
     );
   }
@@ -166,13 +188,13 @@ const App: React.FC = () => {
   return (
     <div className="chat-container w-full h-full flex flex-col bg-white rounded-3xl shadow-2xl border-[8px] border-[#f6c100] overflow-hidden relative mx-auto">
       {/* Header */}
-      <div className="tiger-stripe py-4 px-6 flex items-center justify-between text-white">
+      <div className="tiger-stripe py-4 px-6 flex items-center justify-between text-white shadow-inner">
         <div className="flex items-center gap-3">
           <span className="text-3xl filter drop-shadow-md">🐯</span>
-          <h2 className="text-xl font-black leading-tight drop-shadow-sm">虎おっさん V3</h2>
+          <h2 className="text-xl font-black leading-tight drop-shadow-md">虎おっさん V3.2</h2>
         </div>
         <div className="flex items-center gap-3">
-          <label className="flex items-center gap-2 cursor-pointer bg-black/40 px-3 py-1.5 rounded-full border border-white/20 hover:bg-black/60 transition-colors">
+          <label className="flex items-center gap-2 cursor-pointer bg-black/50 px-3 py-1.5 rounded-full border border-white/30 hover:bg-black/70 transition-all">
             <input 
               type="checkbox" 
               checked={isAutoPlay} 
@@ -188,33 +210,48 @@ const App: React.FC = () => {
       <div className="flex-1 overflow-y-auto p-4 space-y-6 bg-[#fdfaf5] scroll-smooth">
         {messages.length === 0 && !streamingText && (
           <div className="h-full flex flex-col items-center justify-center text-center opacity-30 select-none grayscale p-4">
-            <div className="text-9xl mb-4">⚾️</div>
-            <p className="text-2xl font-black italic tracking-tighter">「なんでも喋りかけてや！阪神の話やったらナンボでもあるデ！」</p>
+            <div className="text-9xl mb-4 transform -rotate-12">⚾️</div>
+            <p className="text-2xl font-black italic tracking-tighter">「プロ並みの歌唱力、聴かせてやるデ！」</p>
           </div>
         )}
         
         {messages.map((msg, idx) => (
-          <div key={idx} className={`flex flex-col ${msg.role === Role.USER ? 'items-end' : 'items-start'} message-in`}>
-            <div className={`max-w-[85%] p-4 rounded-2xl shadow-md text-base leading-relaxed ${
+          <div key={idx} className={`flex ${msg.role === Role.USER ? 'flex-col items-end' : 'flex-row items-start gap-2'} message-in`}>
+            {msg.role === Role.ASSISTANT && (
+              <div className="tiger-avatar-anim text-3xl mt-1 select-none">🐯</div>
+            )}
+            
+            <div className={`max-w-[85%] p-4 rounded-2xl shadow-md text-base leading-relaxed relative ${
               msg.role === Role.USER 
               ? 'bg-[#f6c100] text-black font-bold rounded-br-none border-b-4 border-black/10' 
               : 'bg-white border-2 border-gray-100 text-gray-800 rounded-bl-none'
             }`}>
+              {msg.isSinging && (
+                <div className="flex gap-2 mb-2">
+                  <span className="text-xl animate-bounce">🎵</span>
+                  <span className="text-xl animate-bounce [animation-delay:-0.2s]">🎶</span>
+                  <span className="text-xl animate-bounce [animation-delay:-0.4s]">🎤</span>
+                </div>
+              )}
               {msg.content}
               
               {msg.imageUrl && (
-                <div className="mt-3 rounded-lg overflow-hidden border-2 border-[#f6c100] shadow-lg">
-                  <img src={msg.imageUrl} alt="Generated" className="w-full h-auto" />
+                <div className="mt-3 rounded-lg overflow-hidden border-2 border-[#f6c100] shadow-xl bg-gray-50">
+                  <img src={msg.imageUrl} alt="Generated" className="w-full h-auto block" />
                 </div>
               )}
 
-              {msg.role === Role.ASSISTANT && msg.audioData && !msg.imageUrl && (
+              {msg.role === Role.ASSISTANT && msg.audioData && (
                 <div className="mt-3 flex items-center gap-2 pt-2 border-t border-black/5">
                   <button 
                     onClick={() => playBase64Audio(msg.audioData!)}
-                    className="flex items-center gap-2 bg-gray-100 hover:bg-[#f6c100] text-black px-4 py-1.5 rounded-full text-xs font-black transition-all active:scale-95"
+                    className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-black transition-all active:scale-95 ${
+                      msg.isSinging 
+                      ? 'bg-black text-[#f6c100] hover:bg-gray-800 ring-2 ring-[#f6c100]/50' 
+                      : 'bg-gray-100 hover:bg-[#f6c100] text-black'
+                    }`}
                   >
-                    <span>▶️ 再生するで</span>
+                    <span>{msg.isSinging ? '🎵 魂の歌を聴く' : '▶️ 再生するで'}</span>
                   </button>
                 </div>
               )}
@@ -223,7 +260,8 @@ const App: React.FC = () => {
         ))}
 
         {streamingText && (
-          <div className="flex flex-col items-start message-in">
+          <div className="flex flex-row items-start gap-2 message-in">
+            <div className="tiger-avatar-anim text-3xl mt-1 select-none">🐯</div>
             <div className="max-w-[85%] p-4 rounded-2xl shadow-md text-base bg-white border-2 border-[#f6c100]/40 text-gray-800 rounded-bl-none whitespace-pre-wrap">
               {streamingText}
               <span className="inline-block w-2 h-5 bg-[#f6c100] ml-1 animate-pulse align-middle"></span>
@@ -232,7 +270,8 @@ const App: React.FC = () => {
         )}
         
         {isLoading && !streamingText && (
-          <div className="flex items-start">
+          <div className="flex flex-row items-start gap-2">
+            <div className="tiger-avatar-anim text-3xl mt-1 select-none">🐯</div>
             <div className="bg-white p-3 rounded-2xl border-2 border-gray-100 flex gap-1.5 shadow-sm">
               <div className="w-2.5 h-2.5 bg-[#f6c100] rounded-full animate-bounce"></div>
               <div className="w-2.5 h-2.5 bg-[#f6c100] rounded-full animate-bounce [animation-delay:-0.1s]"></div>
@@ -245,6 +284,22 @@ const App: React.FC = () => {
 
       {/* Input Area */}
       <div className="p-4 bg-white border-t-4 border-[#f6c100]/20">
+        {/* Quick Buttons */}
+        <div className="flex gap-2 mb-3">
+          <button 
+            onClick={() => handleSend("六甲おろしを魂込めて熱唱して！")}
+            className="bg-black text-[#f6c100] hover:bg-gray-800 px-4 py-1.5 rounded-full text-xs font-black border-b-2 border-[#f6c100]/40 transition-all flex items-center gap-1.5"
+          >
+            🎤 魂の歌をリクエスト
+          </button>
+          <button 
+            onClick={() => handleSend("勇ましい虎のイラストを描いて")}
+            className="bg-gray-100 hover:bg-[#f6c100] text-black px-4 py-1.5 rounded-full text-xs font-black border border-gray-200 transition-all"
+          >
+            🎨 虎の絵
+          </button>
+        </div>
+
         <div className="flex gap-2 items-center w-full">
           <button
             onClick={toggleRecording}
@@ -261,7 +316,7 @@ const App: React.FC = () => {
           <input
             type="text"
             className="flex-1 min-w-0 bg-gray-50 border-2 border-gray-100 focus:border-[#f6c100] focus:bg-white rounded-2xl px-5 py-3 text-base outline-none transition-all font-bold text-gray-900 placeholder:text-gray-300 disabled:opacity-40"
-            placeholder={isRecording ? "喋っとるで... (もう一度押して送信)" : "なんでも聞いてや！"}
+            placeholder={isRecording ? "喋っとるで... (もう一度押して送信)" : "歌のリクエストも待っとるで！"}
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             disabled={isLoading}
